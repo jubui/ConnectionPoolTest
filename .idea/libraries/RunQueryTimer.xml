@@ -1,0 +1,13 @@
+<component name="libraryTable">
+  <library name="RunQueryTimer">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/postgresql-42.2.18.jar!/" />
+      <root url="jar://$PROJECT_DIR$/mariadb-java-client-2.7.2.jar!/" />
+      <root url="jar://$PROJECT_DIR$/ojdbc8-19.7.jar!/" />
+      <root url="jar://$PROJECT_DIR$/mysql-connector-java-5.1.49.jar!/" />
+      <root url="jar://$PROJECT_DIR$/QueryTimer.zip!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
