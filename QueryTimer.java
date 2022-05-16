@@ -11,133 +11,203 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.*;
 
+import org.apache.commons.cli.*;
 import org.apache.commons.dbcp2.BasicDataSource;
 import org.apache.commons.dbcp2.PoolableConnection;
 import org.apache.commons.pool2.impl.GenericObjectPool;
 
-import javax.sql.DataSource;
-
 public class QueryTimer {
 
+  public static String JDBC_CONNECTION_STRING_KEY = "jdbcConnectionString";
+  public static String USERNAME_KEY = "username";
+  public static String PASSWORD_KEY = "password";
+  public static String TEST_ON_CREATE_KEY = "testOnCreate";
+  public static String TEST_ON_BORROW_KEY = "testOnBorrow";
+  public static String TEST_ON_RETURN_KEY = "testOnReturn";
+  public static String TEST_ON_IDLE_KEY = "testOnIdle";
+  public static String NUM_THREADS_KEY = "numThreads";
+  public static String QUERY_FREQUENCY_SECS_KEY = "queryFrequencySecs";
+  public static String INITIAL_SIZE_KEY = "initialSize";
+  public static String MAX_TOTAL_KEY = "maxTotal";
+  public static String MIN_IDLE_KEY = "minIdle";
+  public static String MAX_IDLE_KEY = "maxIdle";
+  public static String MAX_WAIT_MILLIS_KEY = "maxWaitMillis";
+  public static String TIME_BETWEEN_EVICTION_RUN_MILLIS_KEY = "timeBetweenEvictionRunsMillis";
+  public static String MIN_EVICTABLE_IDLE_TIME_MILLIS_KEY = "minEvictableIdleTimeMillis";
+  public static String MAX_CONN_LIFETIME_MILLIS_KEY = "maxConnLifetimeMillis";
+  public static String VALIDATION_QUERY_TIMEOUT_SECONDS_KEY = "validationQueryTimeoutSeconds";
+
   public static void main(String[] args) throws Exception {
-    // Read configs
-    BufferedReader reader = new BufferedReader(
-        new InputStreamReader(System.in));
-    // configs
+    Options options = new Options();
+    options.addOption(TEST_ON_CREATE_KEY, true, "The indication of whether objects will be validated after creation. If the " +
+        "object fails to validate, the borrow attempt that triggered the object creation will fail. Default: false");
+    options.addOption(TEST_ON_BORROW_KEY, true, "The indication of whether objects will be validated before being borrowed " +
+        "from the pool. If the object fails to validate, it will be dropped from the pool, and we will attempt to borrow another. Default: true");
+    options.addOption(TEST_ON_RETURN_KEY, true, "The indication of whether objects will be validated before being returned to the pool. Default: false");
+    options.addOption(TEST_ON_IDLE_KEY, true, "The indication of whether objects will be validated by the idle object " +
+        "evictor (if any). If an object fails to validate, it will be dropped from the pool. Default: false");
+    options.addOption(NUM_THREADS_KEY, true, "Number of threads to use. Since each thread performs a query, this " +
+        "corresponds to number of concurrent queries. Default: 1");
+    options.addOption(QUERY_FREQUENCY_SECS_KEY, true, "Period/frequency with which each thread will make a query. Default: 30s");
+    options.addOption(INITIAL_SIZE_KEY, true, "The initial number of connections that are created when the pool is started. Default: 0");
+    options.addOption(MAX_TOTAL_KEY, true, "The maximum number of active connections that can be allocated from this pool at the same time, or negative for no limit. Default: 200");
+    options.addOption(MIN_IDLE_KEY, true, "The minimum number of connections that can remain idle in the pool, without extra ones being created, or zero to create none. Default:  5");
+    options.addOption(MAX_IDLE_KEY, true, "The maximum number of connections that can remain idle in the pool, without extra ones being released, or negative for no limit. Default: 200");
+    options.addOption(MAX_WAIT_MILLIS_KEY, true, "The maximum number of milliseconds that the pool will wait " +
+        "(when there are no available connections) for a connection to be returned before throwing an exception. Default: 1000, -1=indefinitely wait");
+    options.addOption(TIME_BETWEEN_EVICTION_RUN_MILLIS_KEY, true, "The number of milliseconds to sleep between runs of the idle object evictor thread. " +
+        "When non-positive, no idle object evictor thread will be run. Default: 450000, -1=Don't use evictor.");
+    options.addOption(MIN_EVICTABLE_IDLE_TIME_MILLIS_KEY, true, "The minimum amount of time an object may sit idle in the pool before it is eligible for eviction by the idle object evictor (if any).). Default: 900000");
+    options.addOption(MAX_CONN_LIFETIME_MILLIS_KEY, true, "The maximum lifetime in milliseconds of a connection. " +
+        "After this time is exceeded the connection will fail the next activation, passivation or validation test. " +
+        "A value of zero or less means the connection has an infinite lifetime. Default: -1");
+    options.addOption(VALIDATION_QUERY_TIMEOUT_SECONDS_KEY, true, "The timeout in seconds before connection validation queries fail. Default: 5, 0=no timeout/infinite");
 
-    System.out.println("Provide a JDBC connection string");
-    String jdbcConnectionString = "";
-    while (isEmpty(jdbcConnectionString)) {
-      jdbcConnectionString = reader.readLine();
+    /* Required Options */
+    Option jdbcConnectionStringOption = new Option(JDBC_CONNECTION_STRING_KEY, true, "");
+    jdbcConnectionStringOption.setRequired(true);
+    options.addOption(jdbcConnectionStringOption);
+
+    Option usernameOption = new Option(USERNAME_KEY, true, "");
+    usernameOption.setRequired(true);
+    options.addOption(usernameOption);
+
+    Option passwordOption = new Option(PASSWORD_KEY, true, "");
+    passwordOption.setRequired(true);
+    options.addOption(passwordOption);
+    /* End Required Options */
+
+    CommandLineParser parser = new DefaultParser();
+    CommandLine cmd;
+    try {
+       cmd = parser.parse(options, args);
+    } catch (ParseException e) {
+      System.out.println("vvvvv");
+      System.out.println("vvvvv");
+      System.out.println("vvvvv");
+      System.out.println(e.getMessage());
+      System.out.println("^^^^^");
+      System.out.println("^^^^^");
+      System.out.println("^^^^^");
+      HelpFormatter formatter = new HelpFormatter();
+      formatter.printHelp("ConnectionPoolTest.sh", options);
+
+      System.out.println("vvvvv");
+      System.out.println("vvvvv");
+      System.out.println("vvvvv");
+      System.out.println(e.getMessage());
+      System.out.println("^^^^^");
+      System.out.println("^^^^^");
+      System.out.println("^^^^^");
+      return;
     }
+
+    /* Required arguments */
+    String jdbcConnectionString = cmd.getOptionValue(JDBC_CONNECTION_STRING_KEY);
+    String username = cmd.getOptionValue(USERNAME_KEY);
+    String password = cmd.getOptionValue(PASSWORD_KEY);
+    String repeatedQuery;
+    String validationQuery = null;
+    /* End Required arguments */
+
+    boolean testOnCreate = false;
+    boolean testOnBorrow = true;
+    boolean testOnReturn = false;
+    boolean testWhileIdle = false;
+    int numThreads = 1;
+    int queryFrequencySecs = 30;
+    int initialSize = 0;
+    int maxTotal = 200;
+    int minIdle = 5;
+    int maxIdle = 200;
+    int maxWaitMillis = 1000;
+    int timeBetweenEvictionRunsMillis = 450000;
+    int minEvictableIdleTimeMillis = 900000;
+    int maxConnLifetimeMillis = -1;
+    int validationQueryTimeoutSeconds = 5;
+
+    if (cmd.hasOption(TEST_ON_CREATE_KEY)) {
+      testOnCreate = Boolean.valueOf(cmd.getOptionValue(TEST_ON_CREATE_KEY));
+    }
+    if (cmd.hasOption(TEST_ON_BORROW_KEY)) {
+      testOnBorrow = Boolean.valueOf(cmd.getOptionValue(TEST_ON_BORROW_KEY));
+    }
+    if (cmd.hasOption(TEST_ON_RETURN_KEY)) {
+      testOnReturn = Boolean.valueOf(cmd.getOptionValue(TEST_ON_RETURN_KEY));
+    }
+    if (cmd.hasOption(TEST_ON_IDLE_KEY)) {
+      testWhileIdle = Boolean.valueOf(cmd.getOptionValue(TEST_ON_IDLE_KEY));
+    }
+    if (cmd.hasOption(NUM_THREADS_KEY)) {
+      numThreads = Integer.valueOf(cmd.getOptionValue(NUM_THREADS_KEY));
+    }
+    if (cmd.hasOption(QUERY_FREQUENCY_SECS_KEY)) {
+      queryFrequencySecs = Integer.valueOf(cmd.getOptionValue(QUERY_FREQUENCY_SECS_KEY));
+    }
+    if (cmd.hasOption(INITIAL_SIZE_KEY)) {
+      initialSize = Integer.valueOf(cmd.getOptionValue(INITIAL_SIZE_KEY));
+    }
+    if (cmd.hasOption(MAX_TOTAL_KEY)) {
+      maxTotal = Integer.valueOf(cmd.getOptionValue(MAX_TOTAL_KEY));
+    }
+    if (cmd.hasOption(MIN_IDLE_KEY)) {
+      minIdle = Integer.valueOf(cmd.getOptionValue(MIN_IDLE_KEY));
+    }
+    if (cmd.hasOption(MAX_IDLE_KEY)) {
+      maxIdle = Integer.valueOf(cmd.getOptionValue(MAX_IDLE_KEY));
+    }
+    if (cmd.hasOption(MAX_WAIT_MILLIS_KEY)) {
+      maxWaitMillis = Integer.valueOf(cmd.getOptionValue(MAX_WAIT_MILLIS_KEY));
+    }
+    if (cmd.hasOption(TIME_BETWEEN_EVICTION_RUN_MILLIS_KEY)) {
+      timeBetweenEvictionRunsMillis = Integer.valueOf(cmd.getOptionValue(TIME_BETWEEN_EVICTION_RUN_MILLIS_KEY));
+    }
+    if (cmd.hasOption(MIN_EVICTABLE_IDLE_TIME_MILLIS_KEY)) {
+      minEvictableIdleTimeMillis = Integer.valueOf(cmd.getOptionValue(MIN_EVICTABLE_IDLE_TIME_MILLIS_KEY));
+    }
+    if (cmd.hasOption(MAX_CONN_LIFETIME_MILLIS_KEY)) {
+      maxConnLifetimeMillis = Integer.valueOf(cmd.getOptionValue(MAX_CONN_LIFETIME_MILLIS_KEY));
+    }
+    if (cmd.hasOption(VALIDATION_QUERY_TIMEOUT_SECONDS_KEY)) {
+      validationQueryTimeoutSeconds = Integer.valueOf(cmd.getOptionValue(VALIDATION_QUERY_TIMEOUT_SECONDS_KEY));
+    }
+
+    /* Ask for input for queries because command line will have trouble parsing args with spaces */
+    String repeatedQueryInput = null;
+    while (isEmpty(repeatedQueryInput)) {
+      repeatedQueryInput = ask("Provide a query to repeatedly execute. This will be used by all threads at the specified frequency to make concurrent calls to the RDBMS");
+    }
+    repeatedQuery = repeatedQueryInput;
+    
+    String validationQueryInput = ask("Provide a validation query. This is the SQL query that will be used to validate connections from this pool " +
+        "before returning them to the caller. If specified, this query MUST be an SQL SELECT statement that returns at " +
+        "least one row. If not specified, connections will be validation by calling the isValid() method. " +
+        "Default: null (underlying isValid() will be used instead of a query)\"");
+    if (!isEmpty(validationQueryInput)) {
+      validationQuery = validationQueryInput;
+    }
+    /* End ask */
+
     System.out.println("jdbcConnectionString: " + jdbcConnectionString);
-
-    System.out.println("Provide a username");
-    String username = "";
-    while (isEmpty(username)) {
-      username = reader.readLine();
-    }
     System.out.println("username: " + username);
-
-    System.out.println("Provide a password");
-    String password = "";
-    while (isEmpty(password)) {
-      password = reader.readLine();
-    }
-    String passwordStarred = "";
-    for (char c : password.toCharArray()) {
-      passwordStarred += "*";
-    }
-    System.out.println("password: " + passwordStarred);
-
-    System.out.println("Provide a query that will be executed");
-    String repeatedQuery = "";
-    while(isEmpty(repeatedQuery)) {
-      repeatedQuery = reader.readLine();
-    }
     System.out.println("repeatedQuery: " + repeatedQuery);
-
-    System.out.println("Provide a number of threads that will each execute the query");
-    int numThreads = -1;
-    while (numThreads < 1) {
-      try {
-        numThreads = Integer.valueOf(reader.readLine());
-      } catch (Exception e) {
-      }
-    }
-    System.out.println("numTheads: " + numThreads);
-
-    System.out.println("Provide a thread frequency in seconds at which each thread will make repeated queries");
-    int threadFrequencySeconds = -1;
-    while (threadFrequencySeconds < 1) {
-      try {
-        threadFrequencySeconds = Integer.valueOf(reader.readLine());
-      } catch (Exception e) {
-      }
-    }
-
-    System.out.println("Provide a initialSize (default: 0, The initial number of connections that are created when the pool is started.)");
-    int initialSize = getIntOrDefault(reader, 0);
-    System.out.println("initialSize: " + initialSize);
-
-    System.out.println("Provide a maxTotal (default: 200)");
-    int maxTotal = getIntOrDefault(reader, 200);
-    System.out.println("maxTotal: " + maxTotal);
-
-    System.out.println("Provide a maxIdle (default: 200)");
-    int maxIdle = getIntOrDefault(reader, 200);
-    System.out.println("maxIdle: " + maxIdle);
-
-    System.out.println("Provide a minIdle (default: 5)");
-    int minIdle = getIntOrDefault(reader, 5);
-    System.out.println("minIdle: " + minIdle);
-
-    System.out.println("Provide a maxWaitMillis (default: 1000, -1=indefinitely wait, The maximum number of milliseconds that the pool will wait (when there are no available connections) for a connection to be returned before throwing an exception)");
-    int maxWaitMillis = getIntOrDefault(reader, 1000);
-    System.out.println("maxWaitMillis: " + maxWaitMillis);
-
-    // ---
-
-    System.out.println("Provide a validation query (default: <empty> (underlying isValid() will be used instead of a query), The SQL query that will be used to validate connections from this pool before returning them to the caller. If specified, this query MUST be an SQL SELECT statement that returns at least one row. If not specified, connections will be validation by calling the isValid() method.)");
-    String validationQuery = getStringOrDefault(reader, null);
-    System.out.println("validationQuery: " + validationQuery);
-
-    System.out.println("Provide a validation query timeout in seconds (default: 5, 0=no timeout/infinite, the timeout in seconds before connection validation queries fail)");
-    int validationQueryTimeoutSeconds = getIntOrDefault(reader, 5);
-    System.out.println("validationQueryTimeoutSeconds: " + validationQueryTimeoutSeconds);
-
-    System.out.println("Provide a value of testOnCreate (default: false)");
-    boolean testOnCreate = getBooleanOrDefault(reader, false);
     System.out.println("testOnCreate: " + testOnCreate);
-
-    System.out.println("Provide a value of testOnBorrow (default: true)");
-    boolean testOnBorrow = getBooleanOrDefault(reader, true);
     System.out.println("testOnBorrow: " + testOnBorrow);
-
-    System.out.println("Provide a value of testOnReturn (default: false)");
-    boolean testOnReturn = getBooleanOrDefault(reader, false);
     System.out.println("testOnReturn: " + testOnReturn);
-
-    System.out.println("Provide a value of testWhileIdle (default: false)");
-    boolean testWhileIdle = getBooleanOrDefault(reader, false);
     System.out.println("testWhileIdle: " + testWhileIdle);
-
-    System.out.println("Provide a value of timeBetweenEvictionRunsMillis (default: 450000, -1=Don't use evictor, The number of milliseconds to sleep between runs of the idle object evictor thread. When non-positive, no idle object evictor thread will be run.)");
-    int timeBetweenEvictionRunsMillis = getIntOrDefault(reader, 450000);
+    System.out.println("numThreads: " + numThreads);
+    System.out.println("queryFrequencySecs: " + queryFrequencySecs);
+    System.out.println("initialSize: " + initialSize);
+    System.out.println("maxTotal: " + maxTotal);
+    System.out.println("minIdle: " + minIdle);
+    System.out.println("maxWaitMillis: " + maxWaitMillis);
     System.out.println("timeBetweenEvictionRunsMillis: " + timeBetweenEvictionRunsMillis);
-
-    int MIN_EVICTABLE_IDLE_TIME_MILLIS_DEFAULT = 900000;
-    System.out.println("Provide a value of minEvictableIdleTimeMillis (default: " + MIN_EVICTABLE_IDLE_TIME_MILLIS_DEFAULT + ", The minimum amount of time an object may sit idle in the pool before it is eligible for eviction by the idle object evictor (if any).)");
-    int minEvictableIdleTimeMillis = getIntOrDefault(reader, MIN_EVICTABLE_IDLE_TIME_MILLIS_DEFAULT);
     System.out.println("minEvictableIdleTimeMillis: " + minEvictableIdleTimeMillis);
-
-    System.out.println("Provide a value for maxConnLifetimeMillis (default: -1, The maximum lifetime in milliseconds of a connection. After this time is exceeded the connection will fail the next activation, passivation or validation test. A value of zero or less means the connection has an infinite lifetime.)");
-    int maxConnLifetimeMillis = getIntOrDefault(reader, -1);
     System.out.println("maxConnLifetimeMillis: " + maxConnLifetimeMillis);
+    System.out.println("validationQueryTimeoutSeconds: " + validationQueryTimeoutSeconds);
+    System.out.println("validationQuery: " + validationQuery);
 
     BasicDataSource dataSource = new BasicDataSource();
 
@@ -174,15 +244,20 @@ public class QueryTimer {
 
     dataSource.setDriver(driver);
 
+    try (Connection testCreationConnection = timing("creating connection WITHOUT a connection pool", () -> DriverManager.getConnection(jdbcConnectionString, username, password));) {
+    }
+    try (Connection testCreationConnection2 = timing("creating connection WITHOUT a connection pool again", () -> DriverManager.getConnection(jdbcConnectionString, username, password));) {
+    }
+
     ScheduledThreadPoolExecutor scheduledThreadPoolExecutor
         = new ScheduledThreadPoolExecutor(1);
-    scheduledThreadPoolExecutor.scheduleAtFixedRate(() -> System.out.println(printDataSourceStats(dataSource)), 0, 1, TimeUnit.SECONDS);
+    scheduledThreadPoolExecutor.scheduleAtFixedRate(() -> printDataSourceStats(dataSource), 0, 1, TimeUnit.SECONDS);
 
     final String repeatedQueryFinal = repeatedQuery;
     ScheduledThreadPoolExecutor connectionThreadPool = new ScheduledThreadPoolExecutor(numThreads);
     for (int i = 0; i < numThreads; i++) {
       connectionThreadPool.scheduleAtFixedRate(() -> {
-        try (Connection conn = timing("Getting connection", () -> dataSource.getConnection());
+        try (Connection conn = timing("Getting connection from the connection pool", () -> dataSource.getConnection());
              PreparedStatement stmt = timing("Preparing statement", () -> conn.prepareStatement(repeatedQueryFinal))) {
           ResultSet rs = timing("Executing query", () -> stmt.executeQuery());
 //          timing("fetch resultset metadata", () -> displayResultSetMetadata(rs.getMetaData()));
@@ -192,62 +267,13 @@ public class QueryTimer {
         } catch (Exception e) {
           e.printStackTrace();
         }
-      }, 0, threadFrequencySeconds, TimeUnit.SECONDS);
+      }, 0, queryFrequencySecs, TimeUnit.SECONDS);
     }
-
-//
-//    if (args.length < 3) {
-//      System.out.println("Usage:");
-//      System.out.println("   QueryTimer <driverClass> <connectionUrl> <user>");
-//      System.out.println("Examples");
-//      System.out.println("   QueryTimer com.mysql.jdbc.Driver jdbc:mysql://localhost:3306/AppianDB appian");
-//      System.out.println("   QueryTimer oracle.jdbc.OracleDriver jdbc:oracle:thin:@172.17.0.1:1521:citest appian");
-//      System.exit(1);
-//    }
-//
-//
-//
-//    final String driverName = args[0];
-//    final String url = args[1];
-//    final String user = args[2];
-//
-//    Class cls = Class.forName(driverName);
-//    Driver driver = (Driver)cls.newInstance();
-//    DriverManager.registerDriver(driver);
-//
-//    String password = args.length == 4 ? args[3] : ask("Password: ");
-//    final Connection connection = timing("creating connection", () -> DriverManager.getConnection(url, user, password));
-//
-//
-//
-//    StringBuffer query = new StringBuffer();
-//    while(true) {
-//      String line = ask(query.length() > 0 ? "" : "Query> ");
-//      if (line.equalsIgnoreCase("quit")) {
-//        break;
-//      }
-//      query.append(line).append(' ');
-//      if (!line.trim().endsWith(";")) {
-//        continue;
-//      }
-//      long start = System.currentTimeMillis();
-//      String stmt = query.toString();
-//      query = new StringBuffer();
-//      try (PreparedStatement pstmt = timing("prepare statement", () -> connection.prepareStatement(stmt));
-//           ResultSet rs = timing("execute query", () -> pstmt.executeQuery())) {
-//        timing("fetch resultset metadata", () -> displayResultSetMetadata(rs.getMetaData()));
-//        while (rs.next()) {
-//          timing("fetch resultset row", () -> displayResultSetRow(rs));
-//        }
-//      }
-//      System.out.println("Total Query Execution time: " + (System.currentTimeMillis() - start) + " msecs");
-//    }
-//
-//    connection.close();
   }
 
   private static String ask(String prompt) throws IOException {
-    System.out.print(prompt);
+    System.out.println(prompt);
+    System.out.print(">");
     BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
     return br.readLine();
   }
@@ -257,7 +283,7 @@ public class QueryTimer {
     try {
       return callable.call();
     } finally {
-      System.out.println(label + " took " + (System.currentTimeMillis() - start) + " msecs");
+      System.out.println(label + " took " + (System.currentTimeMillis() - start) + " ms");
     }
   }
 
@@ -285,45 +311,18 @@ public class QueryTimer {
     return s == null || s.length() == 0;
   }
 
-  private static boolean getBooleanOrDefault(BufferedReader reader, boolean defaultValue) throws IOException {
-    String s = reader.readLine();
-    if (isEmpty(s)) {
-      s = String.valueOf(defaultValue);
-    }
-
-    return Boolean.valueOf(s);
-  }
-
-  private static String getStringOrDefault(BufferedReader reader, String defaultValue) throws IOException {
-    String s = reader.readLine();
-    if (isEmpty(s)) {
-      s = defaultValue;
-    }
-
-    return s;
-  }
-
-  private static int getIntOrDefault(BufferedReader reader, int defaultValue) throws IOException {
-    String s = reader.readLine();
-    if (isEmpty(s)) {
-      s = String.valueOf(defaultValue);
-    }
-
-    return Integer.valueOf(s);
-  }
-
-  private static String printDataSourceStats(BasicDataSource bds) {
+  private static void printDataSourceStats(BasicDataSource bds) {
     try {
       Method getConnectionPoolMethod = BasicDataSource.class.getDeclaredMethod("getConnectionPool");
       getConnectionPoolMethod.setAccessible(true);
 
       GenericObjectPool<PoolableConnection> pool = (GenericObjectPool<PoolableConnection>) getConnectionPoolMethod.invoke(bds);
 
-      return "Active/Idle/MaxTotal/Created/Borrowed/DestroyedBorrow/DestroyedEvictor/Destroyed: " + bds.getNumActive() +
-          "\t" + bds.getNumIdle() + "\t" + bds.getMaxTotal() + "\t" + pool.getCreatedCount() + "\t" + pool.getBorrowedCount() +
-          "\t" + pool.getDestroyedByBorrowValidationCount() + "\t" + pool.getDestroyedByEvictorCount() + "\t" + pool.getDestroyedCount();
-    } catch (Exception e) {
-      return "";
+      System.out.println("Active\tIdle\tMax\tCreated\tBorrowed\tDstryBorrowed\tDstryEvicted\tDestroyed");
+      System.out.println(bds.getNumActive() + "\t" + bds.getNumIdle() + "\t" + bds.getMaxTotal() + "\t" + pool.getCreatedCount() + 
+          "\t" + pool.getBorrowedCount() + "\t\t" + pool.getDestroyedByBorrowValidationCount() + 
+          "\t\t" + pool.getDestroyedByEvictorCount() + "\t\t" + pool.getDestroyedCount());
+    } catch (Exception ignored) {
     }
   }
 }
