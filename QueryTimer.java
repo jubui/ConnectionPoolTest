@@ -26,7 +26,7 @@ public class QueryTimer {
   public static String TEST_ON_CREATE_KEY = "testOnCreate";
   public static String TEST_ON_BORROW_KEY = "testOnBorrow";
   public static String TEST_ON_RETURN_KEY = "testOnReturn";
-  public static String TEST_ON_IDLE_KEY = "testOnIdle";
+  public static String TEST_WHILE_IDLE_KEY = "testWhileIdle";
   public static String NUM_THREADS_KEY = "numThreads";
   public static String QUERY_FREQUENCY_SECS_KEY = "queryFrequencySecs";
   public static String INITIAL_SIZE_KEY = "initialSize";
@@ -38,6 +38,8 @@ public class QueryTimer {
   public static String MIN_EVICTABLE_IDLE_TIME_MILLIS_KEY = "minEvictableIdleTimeMillis";
   public static String MAX_CONN_LIFETIME_MILLIS_KEY = "maxConnLifetimeMillis";
   public static String VALIDATION_QUERY_TIMEOUT_SECONDS_KEY = "validationQueryTimeoutSeconds";
+  public static String REMOVE_ABANDONED_ON_BORROW_KEY = "removeAbandonedOnBorrow";
+  public static String REMOVE_ABANDONED_ON_MAINTENANCE_KEY = "removeAbandonedOnMaintenance";
 
   public static void main(String[] args) throws Exception {
     Options options = new Options();
@@ -46,7 +48,7 @@ public class QueryTimer {
     options.addOption(TEST_ON_BORROW_KEY, true, "The indication of whether objects will be validated before being borrowed " +
         "from the pool. If the object fails to validate, it will be dropped from the pool, and we will attempt to borrow another. Default: true");
     options.addOption(TEST_ON_RETURN_KEY, true, "The indication of whether objects will be validated before being returned to the pool. Default: false");
-    options.addOption(TEST_ON_IDLE_KEY, true, "The indication of whether objects will be validated by the idle object " +
+    options.addOption(TEST_WHILE_IDLE_KEY, true, "The indication of whether objects will be validated by the idle object " +
         "evictor (if any). If an object fails to validate, it will be dropped from the pool. Default: false");
     options.addOption(NUM_THREADS_KEY, true, "Number of threads to use. Since each thread performs a query, this " +
         "corresponds to number of concurrent queries. Default: 1");
@@ -64,6 +66,8 @@ public class QueryTimer {
         "After this time is exceeded the connection will fail the next activation, passivation or validation test. " +
         "A value of zero or less means the connection has an infinite lifetime. Default: -1");
     options.addOption(VALIDATION_QUERY_TIMEOUT_SECONDS_KEY, true, "The timeout in seconds before connection validation queries fail. Default: 5, 0=no timeout/infinite");
+    options.addOption(REMOVE_ABANDONED_ON_BORROW_KEY, true, "If removeAbandonedOnBorrow is true, abandoned connections are removed each time a connection is borrowed from the pool, with the additional requirements that getNumActive() > getMaxTotal() - 3; and getNumIdle() < 2");
+    options.addOption(REMOVE_ABANDONED_ON_MAINTENANCE_KEY, true, "Setting removeAbandonedOnMaintenance to true removes abandoned connections on the maintenance cycle (when eviction ends). This property has no effect unless maintenance is enabled by setting timeBetweenEvictionRunsMillis to a positive value.");
 
     /* Required Options */
     Option jdbcConnectionStringOption = new Option(JDBC_CONNECTION_STRING_KEY, true, "");
@@ -127,6 +131,8 @@ public class QueryTimer {
     int minEvictableIdleTimeMillis = 900000;
     int maxConnLifetimeMillis = -1;
     int validationQueryTimeoutSeconds = 5;
+    boolean removeAbandonedOnBorrow = false;
+    boolean removeAbandonedOnMaintenance = false;
 
     if (cmd.hasOption(TEST_ON_CREATE_KEY)) {
       testOnCreate = Boolean.valueOf(cmd.getOptionValue(TEST_ON_CREATE_KEY));
@@ -137,8 +143,8 @@ public class QueryTimer {
     if (cmd.hasOption(TEST_ON_RETURN_KEY)) {
       testOnReturn = Boolean.valueOf(cmd.getOptionValue(TEST_ON_RETURN_KEY));
     }
-    if (cmd.hasOption(TEST_ON_IDLE_KEY)) {
-      testWhileIdle = Boolean.valueOf(cmd.getOptionValue(TEST_ON_IDLE_KEY));
+    if (cmd.hasOption(TEST_WHILE_IDLE_KEY)) {
+      testWhileIdle = Boolean.valueOf(cmd.getOptionValue(TEST_WHILE_IDLE_KEY));
     }
     if (cmd.hasOption(NUM_THREADS_KEY)) {
       numThreads = Integer.valueOf(cmd.getOptionValue(NUM_THREADS_KEY));
@@ -172,6 +178,12 @@ public class QueryTimer {
     }
     if (cmd.hasOption(VALIDATION_QUERY_TIMEOUT_SECONDS_KEY)) {
       validationQueryTimeoutSeconds = Integer.valueOf(cmd.getOptionValue(VALIDATION_QUERY_TIMEOUT_SECONDS_KEY));
+    }
+    if (cmd.hasOption(REMOVE_ABANDONED_ON_BORROW_KEY)) {
+      removeAbandonedOnBorrow = Boolean.valueOf(cmd.getOptionValue(REMOVE_ABANDONED_ON_BORROW_KEY));
+    }
+    if (cmd.hasOption(REMOVE_ABANDONED_ON_MAINTENANCE_KEY)) {
+      removeAbandonedOnMaintenance = Boolean.valueOf(cmd.getOptionValue(REMOVE_ABANDONED_ON_MAINTENANCE_KEY));
     }
 
     /* Ask for input for queries because command line will have trouble parsing args with spaces */
@@ -208,6 +220,8 @@ public class QueryTimer {
     System.out.println("maxConnLifetimeMillis: " + maxConnLifetimeMillis);
     System.out.println("validationQueryTimeoutSeconds: " + validationQueryTimeoutSeconds);
     System.out.println("validationQuery: " + validationQuery);
+    System.out.println("removeAbandonedOnBorrow: " + removeAbandonedOnBorrow);
+    System.out.println("removeAbandonedOnMaintenance: " + removeAbandonedOnMaintenance);
 
     BasicDataSource dataSource = new BasicDataSource();
 
@@ -235,10 +249,14 @@ public class QueryTimer {
     dataSource.setMinIdle(minIdle);
     dataSource.setMaxWaitMillis(maxWaitMillis);
 
+    dataSource.setRemoveAbandonedOnBorrow(removeAbandonedOnBorrow);
+    dataSource.setRemoveAbandonedOnMaintenance(removeAbandonedOnMaintenance);
+
     int TRANSACTION_READ_COMMITTED = 2;
     dataSource.setDefaultTransactionIsolation(TRANSACTION_READ_COMMITTED); // mimics AE
 
-    Class cls = Class.forName("org.mariadb.jdbc.Driver");
+    Class cls = Class.forName("org.postgresql.Driver");
+    //Class cls = Class.forName("oracle.jdbc.OracleDriver");
     Driver driver = (Driver)cls.newInstance();
     DriverManager.registerDriver(driver);
 
