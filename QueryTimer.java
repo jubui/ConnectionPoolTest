@@ -40,6 +40,7 @@ public class QueryTimer {
   public static String VALIDATION_QUERY_TIMEOUT_SECONDS_KEY = "validationQueryTimeoutSeconds";
   public static String REMOVE_ABANDONED_ON_BORROW_KEY = "removeAbandonedOnBorrow";
   public static String REMOVE_ABANDONED_ON_MAINTENANCE_KEY = "removeAbandonedOnMaintenance";
+  public static String RDBMS_TYPE_KEY = "rdbmsType";
 
   public static void main(String[] args) throws Exception {
     Options options = new Options();
@@ -68,6 +69,7 @@ public class QueryTimer {
     options.addOption(VALIDATION_QUERY_TIMEOUT_SECONDS_KEY, true, "The timeout in seconds before connection validation queries fail. Default: 5, 0=no timeout/infinite");
     options.addOption(REMOVE_ABANDONED_ON_BORROW_KEY, true, "If removeAbandonedOnBorrow is true, abandoned connections are removed each time a connection is borrowed from the pool, with the additional requirements that getNumActive() > getMaxTotal() - 3; and getNumIdle() < 2");
     options.addOption(REMOVE_ABANDONED_ON_MAINTENANCE_KEY, true, "Setting removeAbandonedOnMaintenance to true removes abandoned connections on the maintenance cycle (when eviction ends). This property has no effect unless maintenance is enabled by setting timeBetweenEvictionRunsMillis to a positive value.");
+    options.addOption(RDBMS_TYPE_KEY, true, "RDBMS Server type Default: MariaDB (e.g., maria, maridb, mysql, mssql, sqlserver, postgres, postgresql, pg, oracle, db2)");
 
     /* Required Options */
     Option jdbcConnectionStringOption = new Option(JDBC_CONNECTION_STRING_KEY, true, "");
@@ -133,6 +135,7 @@ public class QueryTimer {
     int validationQueryTimeoutSeconds = 5;
     boolean removeAbandonedOnBorrow = false;
     boolean removeAbandonedOnMaintenance = false;
+    String rdbmsType = "mariadb";
 
     if (cmd.hasOption(TEST_ON_CREATE_KEY)) {
       testOnCreate = Boolean.valueOf(cmd.getOptionValue(TEST_ON_CREATE_KEY));
@@ -185,6 +188,9 @@ public class QueryTimer {
     if (cmd.hasOption(REMOVE_ABANDONED_ON_MAINTENANCE_KEY)) {
       removeAbandonedOnMaintenance = Boolean.valueOf(cmd.getOptionValue(REMOVE_ABANDONED_ON_MAINTENANCE_KEY));
     }
+    if (cmd.hasOption(RDBMS_TYPE_KEY)) {
+      rdbmsType = cmd.getOptionValue(RDBMS_TYPE_KEY).toLowerCase();
+    }
 
     /* Ask for input for queries because command line will have trouble parsing args with spaces */
     String repeatedQueryInput = null;
@@ -222,6 +228,7 @@ public class QueryTimer {
     System.out.println("validationQuery: " + validationQuery);
     System.out.println("removeAbandonedOnBorrow: " + removeAbandonedOnBorrow);
     System.out.println("removeAbandonedOnMaintenance: " + removeAbandonedOnMaintenance);
+    System.out.println("rdbmsType: " + rdbmsType);
 
     BasicDataSource dataSource = new BasicDataSource();
 
@@ -255,16 +262,38 @@ public class QueryTimer {
     int TRANSACTION_READ_COMMITTED = 2;
     dataSource.setDefaultTransactionIsolation(TRANSACTION_READ_COMMITTED); // mimics AE
 
-    Class cls = Class.forName("org.postgresql.Driver");
-    //Class cls = Class.forName("oracle.jdbc.OracleDriver");
+    String driverClass;
+    switch(rdbmsType) {
+      case("maria"):
+      case("mariadb"):
+        driverClass = "org.mariadb.jdbc.Driver";
+        break;
+      case("mysql"):
+        driverClass = "com.mysql.cj.jdbc.Driver";
+        break;
+      case("oracle"):
+        driverClass = "oracle.jdbc.OracleDriver";
+        break;
+      case("pg"):
+      case("postgres"):
+      case("postgresql"):
+        driverClass = "org.postgresql.Driver";
+        break;
+      case("sqlserver"):
+      case("mssql"):
+        driverClass = "com.microsoft.sqlserver.jdbc.SQLServerDriver";
+        break;
+      default:
+        throw new RuntimeException("Unsupported rdbmsType: " + rdbmsType);
+    }
+
+    Class cls = Class.forName(driverClass);
     Driver driver = (Driver)cls.newInstance();
     DriverManager.registerDriver(driver);
 
     dataSource.setDriver(driver);
 
     try (Connection testCreationConnection = timing("creating connection WITHOUT a connection pool", () -> DriverManager.getConnection(jdbcConnectionString, username, password));) {
-    }
-    try (Connection testCreationConnection2 = timing("creating connection WITHOUT a connection pool again", () -> DriverManager.getConnection(jdbcConnectionString, username, password));) {
     }
 
     ScheduledThreadPoolExecutor scheduledThreadPoolExecutor
