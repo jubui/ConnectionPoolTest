@@ -365,7 +365,7 @@ public class QueryTimer {
 
       GenericObjectPool<PoolableConnection> pool = (GenericObjectPool<PoolableConnection>) getConnectionPoolMethod.invoke(bds);
 
-      System.out.println("Active\tIdle\tMax\tCreated\tBorrowed\tDstryBorrowed\tDstryEvicted\tDestroyed");
+      System.out.println("Active\tIdle\tMax\tCreated\tBorrowed\tDstryBorrowed\tDstryEvicted\tDestroyed\t" + new java.util.Date());
       System.out.println(bds.getNumActive() + "\t" + bds.getNumIdle() + "\t" + bds.getMaxTotal() + "\t" + pool.getCreatedCount() + 
           "\t" + pool.getBorrowedCount() + "\t\t" + pool.getDestroyedByBorrowValidationCount() + 
           "\t\t" + pool.getDestroyedByEvictorCount() + "\t\t" + pool.getDestroyedCount());
