@@ -90,23 +90,10 @@ public class QueryTimer {
     try {
        cmd = parser.parse(options, args);
     } catch (ParseException e) {
-      System.out.println("vvvvv");
-      System.out.println("vvvvv");
-      System.out.println("vvvvv");
       System.out.println(e.getMessage());
-      System.out.println("^^^^^");
-      System.out.println("^^^^^");
-      System.out.println("^^^^^");
       HelpFormatter formatter = new HelpFormatter();
-      formatter.printHelp("ConnectionPoolTest.sh", options);
-
-      System.out.println("vvvvv");
-      System.out.println("vvvvv");
-      System.out.println("vvvvv");
+      formatter.printHelp("ConnectionPoolTest.sh -jdbcConnectionString \"<jdbc connection string>\" -username <username> -password <password>", options);
       System.out.println(e.getMessage());
-      System.out.println("^^^^^");
-      System.out.println("^^^^^");
-      System.out.println("^^^^^");
       return;
     }
 
